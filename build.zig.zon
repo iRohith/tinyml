@@ -1,0 +1,12 @@
+.{
+    .name = .tinyml,
+    .version = "0.0.1",
+    .fingerprint = 0xa1dd103ee9dfcc37,
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

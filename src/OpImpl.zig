@@ -9,6 +9,27 @@ const TypeHint = @import("OpDef.zig").TypeHint;
 const DTypeFn = @import("OpDef.zig").DTypeFn;
 const cast = @import("Util.zig").cast;
 
+pub fn mk_void(bc: *BuildContext, dtype: ?type) OpDef {
+    return OpDef{
+        .name = "void",
+        .ctx = bc,
+        .dtype = struct {
+            fn call(_: TypeHint) ?type {
+                return dtype;
+            }
+        }.call,
+        .eval_t = struct {
+            pub fn call(
+                ret_type: type,
+                noalias _: anytype,
+                _: anytype,
+            ) ret_type {
+                return undefined;
+            }
+        },
+    };
+}
+
 pub fn mk_const(bc: *BuildContext, comptime val: anytype) OpDef {
     return OpDef{
         .name = "const",
@@ -162,10 +183,8 @@ pub fn mk_assign(ref: OpDef, op_: OpDef) OpDef {
 pub fn mk_simple(bc: *BuildContext, opname: str, ops_: []const ?OpDef, type_idx: ?usize, func: type) OpDef {
     comptime {
         var dt_fns: [ops_.len]?DTypeFn = undefined;
-        var names: [ops_.len]str = undefined;
         for (ops_, 0..) |op_, i| {
             dt_fns[i] = if (op_) |op| op.dtype else null;
-            names[i] = op_.?.name;
         }
         return OpDef{
             .name = opname,
@@ -254,56 +273,18 @@ pub fn mk_index(a_: OpDef, b_: OpDef) OpDef {
     }
 }
 
-pub fn mk_loop_range(
-    comptime iname: str,
-    v: struct {
-        start: ?OpDef = null,
-        stop: OpDef,
-        step: ?OpDef = null,
-        body: OpDef,
-    },
-    scope_: ?str,
-) OpDef {
-    const scope = scope_ orelse "default";
-    const s = v.start orelse mk_const(v.body.ctx, 0);
-    return mk_simple(v.body.ctx, "loop_range", &.{
-        mk_ref(v.body.ctx, iname, usize, scope),
-        s,
-        v.stop,
-        v.step orelse mk_const(v.body.ctx, 1),
-        v.body,
-    }, 4, struct {
+pub fn mk_block(ops: []const OpDef) OpDef {
+    const N = ops.len;
+    return mk_simple(ops[0].ctx, "block", ops, N - 1, struct {
         inline fn call(
             ret_type: type,
             noalias tmp: anytype,
             evals: anytype,
         ) ret_type {
-            const i = evals[0].call(tmp);
-            const step = evals[3].call(tmp);
-            const stop = evals[2].call(tmp);
-
-            i.* = evals[1].call(tmp);
-
-            var ret: ret_type = undefined;
-
-            while (i.* < stop) {
-                ret = evals[4].call(tmp);
-                i.* += step;
+            inline for (0..N - 1) |i| {
+                _ = evals[i].call(tmp);
             }
-
-            return ret;
-        }
-    });
-}
-
-pub fn mk_add(a_: OpDef, b_: OpDef) OpDef {
-    return mk_simple(a_.ctx, "add", &.{ a_, b_ }, null, struct {
-        inline fn call(
-            ret_type: type,
-            noalias tmp: anytype,
-            evals: anytype,
-        ) ret_type {
-            return evals[0].call(tmp) + evals[1].call(tmp);
+            return evals[N - 1].call(tmp);
         }
     });
 }

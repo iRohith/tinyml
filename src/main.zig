@@ -16,9 +16,9 @@ const ExprEval = blk: {
     const loop = C.assign(A.add(B).add(ob.var_(
         "num",
         true,
-    ).cast(null).cast(null).cast(null))).loop_range("i", .{
+    ).cast(null).cast(null).cast(null))).for_range("i", .{
         .stop = ob.var_("len", true).cast(null).cast(usize),
-    }, null);
+    });
 
     break :blk loop.build().evaluator(struct {
         A: [*]const f32,

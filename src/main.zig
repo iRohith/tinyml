@@ -1,28 +1,66 @@
 const std = @import("std");
-const Op = @import("Ops.zig").Op;
-const DType = @import("DType.zig").DType;
+const OpBuilder = @import("OpBuilder.zig").OpBuilder;
 
-extern fn exported_eval(*const anyopaque) f32;
+export fn adder_zig(noalias inp: *const ExprEval.input_t) void {
+    for (0..@as(usize, @intFromFloat(inp.len))) |i| inp.C[i] = inp.A[i] + inp.B[i] + @as(f32, @floatFromInt(inp.num));
+}
+
+extern fn adder_custom_exported(*const anyopaque) void;
+
+const ExprEval = blk: {
+    var ob = OpBuilder.init();
+    const i = ob.var_("i", false);
+    const A = ob.var_("A", true).index(i);
+    const B = ob.var_("B", true).index(i);
+    const C = ob.ref("C", null, "inputs").index(i);
+    const loop = C.assign(A.add(B).add(ob.var_(
+        "num",
+        true,
+    ).cast(null).cast(null).cast(null))).loop_range("i", .{
+        .stop = ob.var_("len", true).cast(null).cast(usize),
+    }, null);
+
+    break :blk loop.build().evaluator(struct {
+        A: [*]const f32,
+        B: [*]const f32,
+        C: [*]f32,
+        num: i64,
+        len: f32,
+    }, .c);
+};
+
+comptime {
+    @export(&ExprEval.ceval, .{ .name = "adder_custom_exported" });
+}
 
 pub fn main() !void {
-    const a = Op.variable("a");
-    const b = Op.variable("b").cast();
-    const c = Op.constant(2);
+    const allocator = std.heap.page_allocator;
+    const A = try allocator.alloc(f32, 1024 * 1024);
+    const B = try allocator.alloc(f32, 1024 * 1024);
+    const C = try allocator.alloc(f32, 1024 * 1024);
+    defer {
+        allocator.free(A);
+        allocator.free(B);
+        allocator.free(C);
+    }
 
-    const op = a.add(b);
-    const op1 = op.div(b);
-    const opc = op1.index(c.castTo(u32));
+    var inp: ExprEval.input_t = .{ .A = A.ptr, .B = B.ptr, .C = C.ptr, .len = @floatFromInt(C.len), .num = 5 };
 
-    var av: @Vector(4, f32) = .{ 1, 2, 3, 4 };
-    av *= @splat(2);
+    @memset(A, 1);
+    @memset(B, 6);
+    @memset(C, 0);
 
-    const ans = op1.eval(.{ .a = av, .b = @as(f32, 3.2) });
-    std.log.debug("{}", .{ans});
+    adder_zig(&inp);
+    std.log.debug("{}", .{C[100]});
 
-    const ans1 = opc.eval(.{ .a = av, .b = @as(f32, 3.2) });
-    std.log.debug("{}", .{ans1});
+    @memset(A, 1);
+    @memset(B, 5);
+    @memset(C, 0);
 
-    const eval_t = a.add(b).cExport("exported_eval", @TypeOf(.{ .a = @as(f32, 1), .b = @as(f32, 1) }));
-    const data: eval_t.input_type = .{ .a = 3, .b = 2 };
-    std.log.debug("{}, {}", .{ eval_t.eval(&data), exported_eval(&data) });
+    adder_custom_exported(&inp);
+    std.log.debug("{}", .{C[100]});
+
+    // std.log.debug("{s}", .{
+    //     @typeInfo(@FieldType(ExprEval._input_t, "loops")).@"struct".fields[0].name,
+    // });
 }

@@ -140,7 +140,8 @@ pub const BuildContext = struct {
 
         for (self.locals, 0..) |b, i| {
             if (i == 0) continue;
-            fields[i] = .{ .name = b.name, .dtype = b.fields.build(i == 1 or is_extern) };
+            fields[i] = .{ .name = b.name, .dtype = b.fields.build(is_extern) };
+            // fields[i] = .{ .name = b.name, .dtype = b.fields.build(i == 1 or is_extern) };
         }
 
         return FieldArray.build(.{ .variables = fields[1..] }, is_extern);

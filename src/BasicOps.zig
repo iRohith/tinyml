@@ -1,8 +1,11 @@
 const std = @import("std");
+const eql = std.mem.eql;
+const cprint = std.fmt.comptimePrint;
 const str = [:0]const u8;
 const OpDef = @import("OpDef.zig").OpDef;
 const mk_simple = @import("OpImpl.zig").mk_simple;
 const ops = @import("OpImpl.zig");
+const Refl = @import("Reflection.zig");
 
 pub fn mk_add(a_: OpDef, b_: OpDef) OpDef {
     return mk_simple(a_.ctx, "add", &.{ a_, b_ }, null, struct {
@@ -270,6 +273,7 @@ pub fn mk_for(
     init: ?OpDef,
     cond: OpDef,
     body: OpDef,
+    comptime is_inline: bool,
 ) OpDef {
     return mk_simple(body.ctx, "for_range", &.{
         init orelse ops.mk_void(body.ctx, void),
@@ -284,8 +288,15 @@ pub fn mk_for(
             _ = evals[0].call(tmp);
 
             var ret: ret_type = undefined;
-            while (evals[1].call(tmp)) {
-                ret = evals[2].call(tmp);
+
+            if (comptime is_inline) {
+                inline while (evals[1].call(tmp)) {
+                    ret = evals[2].call(tmp);
+                }
+            } else {
+                while (evals[1].call(tmp)) {
+                    ret = evals[2].call(tmp);
+                }
             }
 
             return ret;
@@ -294,7 +305,7 @@ pub fn mk_for(
 }
 
 pub fn mk_for_range(
-    comptime iname: str,
+    iref: OpDef,
     v: struct {
         start: ?OpDef = null,
         stop: OpDef,
@@ -302,10 +313,13 @@ pub fn mk_for_range(
         body: OpDef,
         cond: ?OpDef = null,
     },
+    comptime is_inline: bool,
 ) OpDef {
+    // if (!eql(u8, "ref", iref.name))
+    //     @compileError(cprint("Expected ref, found '{s}'", .{iref.name}));
     const has_cond = v.cond != null;
     return mk_simple(v.body.ctx, "for_range", &.{
-        ops.mk_ref(v.body.ctx, iname, usize, null),
+        iref,
         v.start orelse ops.mk_const(v.body.ctx, 0),
         v.stop,
         v.step orelse ops.mk_const(v.body.ctx, 1),
@@ -317,26 +331,54 @@ pub fn mk_for_range(
             noalias tmp: anytype,
             evals: anytype,
         ) ret_type {
-            const i = evals[0].call(tmp);
-            const step = evals[3].call(tmp);
-            const stop = evals[2].call(tmp);
+            if (comptime is_inline) {
+                @setEvalBranchQuota(100_000_000);
+                comptime var i = evals[1].call(undefined);
+                const step = evals[3].call(undefined);
+                const stop = evals[2].call(undefined);
 
-            i.* = evals[1].call(tmp);
-            var ret: ret_type = undefined;
+                const name = evals[0].call(tmp);
+                Refl.set(&.{name}, tmp, i);
+                var ret: ret_type = undefined;
 
-            if (comptime has_cond) {
-                while (i.* < stop and evals[5].call(tmp)) {
-                    ret = evals[4].call(tmp);
-                    i.* += step;
+                if (comptime has_cond) {
+                    inline while (i < stop) {
+                        if (!evals[5].call(tmp)) return ret;
+                        ret = evals[4].call(tmp);
+                        i += step;
+                        Refl.set(&.{name}, tmp, i);
+                    }
+                } else {
+                    inline while (i < stop) {
+                        ret = evals[4].call(tmp);
+                        i += step;
+                        Refl.set(&.{name}, tmp, i);
+                    }
                 }
+
+                return ret;
             } else {
-                while (i.* < stop) {
-                    ret = evals[4].call(tmp);
-                    i.* += step;
-                }
-            }
+                const i = evals[0].call(tmp);
+                const step = evals[3].call(tmp);
+                const stop = evals[2].call(tmp);
 
-            return ret;
+                i.* = evals[1].call(tmp);
+                var ret: ret_type = undefined;
+
+                if (comptime has_cond) {
+                    while (i.* < stop and evals[5].call(tmp)) {
+                        ret = evals[4].call(tmp);
+                        i.* += step;
+                    }
+                } else {
+                    while (i.* < stop) {
+                        ret = evals[4].call(tmp);
+                        i.* += step;
+                    }
+                }
+
+                return ret;
+            }
         }
     });
 }

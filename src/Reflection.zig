@@ -2,7 +2,7 @@ const std = @import("std");
 const eql = std.mem.eql;
 const str = [:0]const u8;
 
-fn ValueType(comptime T: type, comptime name: ?str) type {
+pub fn ValueType(comptime T: type, comptime name: ?str) type {
     return switch (@typeInfo(T)) {
         .@"struct" => if (name) |n|
             ValueType(@FieldType(T, n), null)
@@ -17,7 +17,7 @@ fn ValueType(comptime T: type, comptime name: ?str) type {
     };
 }
 
-inline fn valueOf(noalias val: anytype, comptime name: ?str) ValueType(@TypeOf(val), name) {
+pub inline fn valueOf(noalias val: anytype, comptime name: ?str) ValueType(@TypeOf(val), name) {
     return switch (@typeInfo(@TypeOf(val))) {
         .@"struct" => if (name) |n|
             valueOf(@field(val, n), null)
@@ -29,7 +29,7 @@ inline fn valueOf(noalias val: anytype, comptime name: ?str) ValueType(@TypeOf(v
     };
 }
 
-fn RefType(comptime T: type, comptime name: ?str) type {
+pub fn RefType(comptime T: type, comptime name: ?str) type {
     return switch (@typeInfo(T)) {
         .pointer => |info| if (info.size == .one) switch (@typeInfo(info.child)) {
             .pointer => |info1| if (info1.size == .one)
@@ -52,7 +52,7 @@ fn RefType(comptime T: type, comptime name: ?str) type {
     };
 }
 
-inline fn refOf(noalias val: anytype, comptime name: ?str) RefType(@TypeOf(val), name) {
+pub inline fn refOf(noalias val: anytype, comptime name: ?str) RefType(@TypeOf(val), name) {
     return switch (@typeInfo(@TypeOf(val))) {
         .pointer => |info| if (info.size == .one) switch (@typeInfo(info.child)) {
             .pointer => |info1| if (info1.size == .one)

@@ -36,9 +36,13 @@ pub const OpDef = struct {
     pub fn evaluator(
         comptime self: OpDef,
         comptime type_sample: type,
-        comptime callconv_: std.builtin.CallingConvention,
+        // comptime callconv_: std.builtin.CallingConvention,
     ) type {
-        return self._evaluator(type_sample, void, callconv_);
+        return self._evaluator(
+            type_sample,
+            void,
+            // callconv_,
+        );
     }
 
     fn _traverse(
@@ -72,7 +76,7 @@ pub const OpDef = struct {
         comptime self: OpDef,
         comptime type_sample: type,
         comptime final_inp_t: ?type,
-        comptime callconv_: std.builtin.CallingConvention,
+        // comptime callconv_: std.builtin.CallingConvention,
     ) type {
         comptime {
             @setEvalBranchQuota(100_000);
@@ -110,7 +114,7 @@ pub const OpDef = struct {
                     evals[i] = inp._evaluator(
                         type_sample,
                         final_inp_t,
-                        callconv_,
+                        // callconv_,
                     );
                 } else {
                     evals[i] = struct {
@@ -137,14 +141,28 @@ pub const OpDef = struct {
                     );
                 }
 
-                pub fn ceval(input: *const input_t) callconv(callconv_) switch (@typeInfo(dtype)) {
-                    .comptime_int => i64,
-                    .comptime_float => f64,
-                    else => dtype,
-                } {
-                    var inps: _input_t = undefined;
-                    inps.inputs = input.*;
-                    return call(&inps);
+                pub fn export_(
+                    name: str,
+                    comptime callconv_: std.builtin.CallingConvention,
+                ) type {
+                    return struct {
+                        pub const dtype = final_dt;
+                        pub const input_t = @FieldType(_input_t, "inputs");
+
+                        pub fn eval(input: *const @This().input_t) callconv(callconv_) switch (@typeInfo(final_dt)) {
+                            .comptime_int => i64,
+                            .comptime_float => f64,
+                            else => final_dt,
+                        } {
+                            var inps: _input_t = undefined;
+                            inps.inputs = input.*;
+                            return call(&inps);
+                        }
+
+                        comptime {
+                            @export(&eval, .{ .name = name });
+                        }
+                    };
                 }
             };
         }

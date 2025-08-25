@@ -28,6 +28,10 @@ pub const OpBuilder = struct {
         return .{ .ctx = self.ctx, .op = op };
     }
 
+    pub fn void_(self: OpBuilder, dtype: ?type) OpBuilder {
+        return .{ .ctx = self.ctx, .op = OpImpl.mk_void(self.ctx, dtype) };
+    }
+
     pub fn const_(self: OpBuilder, comptime v: anytype) OpBuilder {
         return .{ .ctx = self.ctx, .op = OpImpl.mk_const(self.ctx, v) };
     }
@@ -40,13 +44,24 @@ pub const OpBuilder = struct {
         return .{ .ctx = self.ctx, .op = OpImpl.mk_ref(self.ctx, name, dtype, scope_) };
     }
 
+    pub fn val(a: OpBuilder) OpBuilder {
+        return .{ .ctx = a.ctx, .op = OpImpl.mk_val(a.op) };
+    }
+
     pub fn cast(a: OpBuilder, dtype: ?type) OpBuilder {
         return .{ .ctx = a.ctx, .op = OpImpl.mk_cast(a.op, dtype) };
     }
 
+    pub fn len(a: OpBuilder) OpBuilder {
+        return .{ .ctx = a.ctx, .op = OpImpl.mk_len(a.op) };
+    }
+
     pub fn assign(lhs: OpBuilder, rhs: OpBuilder) OpBuilder {
-        if (!(eql(u8, lhs.op.name, "ref") or eql(u8, lhs.op.name, "index"))) @compileError("Expected ref");
         return .{ .ctx = lhs.ctx, .op = OpImpl.mk_assign(lhs.op, rhs.op) };
+    }
+
+    pub fn set(rhs: OpBuilder, name: str) OpBuilder {
+        return .{ .ctx = rhs.ctx, .op = OpImpl.mk_set(name, rhs.op) };
     }
 
     pub fn index(a: OpBuilder, b: OpBuilder) OpBuilder {
@@ -129,30 +144,44 @@ pub const OpBuilder = struct {
         return .{ .ctx = a.ctx, .op = Ops.mk_bitnot(a.op) };
     }
 
+    pub fn block(self: OpBuilder, ops: []const ?OpBuilder) OpBuilder {
+        comptime {
+            var opdefs: [ops.len]?OpDef = undefined;
+            for (ops, 0..) |op, i| opdefs[i] = opn(op);
+            return .{ .ctx = self.ctx, .op = OpImpl.mk_block(&opdefs) };
+        }
+    }
+
     pub fn ifelse(cond: OpBuilder, then_body: ?OpBuilder, else_body: ?OpBuilder) OpBuilder {
         return .{ .ctx = cond.ctx, .op = Ops.mk_ifelse(cond.op, opn(then_body), opn(else_body)) };
     }
 
-    pub fn for_(init_: ?OpBuilder, cond: OpBuilder, body: OpBuilder) OpBuilder {
-        return .{ .ctx = cond.ctx, .op = Ops.mk_for(opn(init_), cond, body) };
+    pub fn for_(init_: ?OpBuilder, cond: OpBuilder, body: OpBuilder, comptime is_inline: bool) OpBuilder {
+        return .{ .ctx = cond.ctx, .op = Ops.mk_for(
+            opn(init_),
+            cond,
+            body,
+            is_inline,
+        ) };
     }
 
     pub fn for_range(
         body: OpBuilder,
-        iname: str,
+        iref: OpBuilder,
         v: struct {
             stop: OpBuilder,
             start: ?OpBuilder = null,
             step: ?OpBuilder = null,
             cond: ?OpBuilder = null,
         },
+        comptime is_inline: bool,
     ) OpBuilder {
-        return .{ .ctx = body.ctx, .op = Ops.mk_for_range(iname, .{
+        return .{ .ctx = body.ctx, .op = Ops.mk_for_range(iref.op, .{
             .start = opn(v.start),
             .stop = v.stop.op,
             .step = opn(v.step),
             .body = body.op,
             .cond = opn(v.cond),
-        }) };
+        }, is_inline) };
     }
 };
